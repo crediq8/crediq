@@ -202,20 +202,20 @@ export default function Home() {
             <div>
               <h3 className="text-sm font-semibold text-indigo-400 uppercase tracking-wider mb-2">The Crediq Way</h3>
               <p className="text-2xl md:text-3xl font-medium leading-relaxed text-white">
-                "I want to save $50,000 for a house in 3 years."
+                "I want to save 50 Lakhs for a house in 3 years."
               </p>
               <div className="mt-8 space-y-4">
                 <div className="glass-panel p-4 flex items-center justify-between">
                   <div className="flex flex-col">
                     <span className="text-sm text-slate-400">Monthly Target</span>
-                    <span className="text-xl font-bold text-green-400">$1,388/mo</span>
+                    <span className="text-xl font-bold text-green-400">₹1,25,000/mo</span>
                   </div>
                   <ChevronRight className="w-5 h-5 text-slate-500" />
                 </div>
                 <div className="glass-panel p-4 flex items-center justify-between">
                   <div className="flex flex-col">
                     <span className="text-sm text-slate-400">Best Vehicle</span>
-                    <span className="text-xl font-bold text-indigo-300">JPMorgan 5.5% Promo</span>
+                    <span className="text-xl font-bold text-indigo-300">HDFC Bank 7.20% FD</span>
                   </div>
                   <ChevronRight className="w-5 h-5 text-slate-500" />
                 </div>

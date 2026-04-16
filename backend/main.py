@@ -36,8 +36,8 @@ async def chat_intent(request: ChatRequest):
         response = openai.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "You are the Crediq AI Core, handling financial platform routing. Analyze the user prompt. Classify 'intent' as either: 'fd', 'compare', 'plan', 'fraud', or 'general'. Extract any numerical values like amount, years, or rate if provided into a 'data' dictionary as numbers. Return a JSON response exactly: {\"intent\": \"str\", \"data\": {\"amount\": number|null, \"years\": number|null}}"},
-                {"role": "user", "content": request.message}
+                {"role": "system", "content": "You are the Crediq AI Core, handling financial platform routing tailored for the Indian market. Analyze the user prompt. Classify 'intent' as: 'fd', 'compare', 'plan', 'fraud', or 'general'. Extract numerical values like amount (convert Lakhs/Crores to standard Rupees/numbers), years/months, or interest rate if provided into a 'data' dictionary. Return a JSON response exactly: {\"intent\": \"str\", \"data\": {\"amount_in_rupees\": number|null, \"years\": number|null, \"rate\": number|null}}"},
+                {"role": "user", "content": f"{request.message} (Context: Indian rupees, FD rates like SBI/HDFC)"}
             ],
             response_format={ "type": "json_object" }
         )
