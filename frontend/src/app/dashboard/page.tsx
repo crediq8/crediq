@@ -59,6 +59,7 @@ export default function Dashboard() {
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  const autoStopTimerRef = useRef<number | null>(null);
 
   // 1. REAL-TIME CALCULATION ENGINE
   useEffect(() => {
@@ -110,6 +111,7 @@ export default function Dashboard() {
     return () => {
       const recorder = mediaRecorderRef.current;
       if (recorder && recorder.state !== "inactive") recorder.stop();
+      if (autoStopTimerRef.current) window.clearTimeout(autoStopTimerRef.current);
     };
   }, []);
 
@@ -121,6 +123,10 @@ export default function Dashboard() {
     }
 
     if (isRecording) {
+      if (autoStopTimerRef.current) {
+        window.clearTimeout(autoStopTimerRef.current);
+        autoStopTimerRef.current = null;
+      }
       const recorder = mediaRecorderRef.current;
       if (recorder && recorder.state !== "inactive") recorder.stop();
       return;
@@ -137,6 +143,10 @@ export default function Dashboard() {
       };
 
       recorder.onstop = async () => {
+        if (autoStopTimerRef.current) {
+          window.clearTimeout(autoStopTimerRef.current);
+          autoStopTimerRef.current = null;
+        }
         stream.getTracks().forEach((track) => track.stop());
         setIsRecording(false);
         const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
@@ -152,6 +162,12 @@ export default function Dashboard() {
 
       recorder.start();
       setIsRecording(true);
+      autoStopTimerRef.current = window.setTimeout(() => {
+        const activeRecorder = mediaRecorderRef.current;
+        if (activeRecorder && activeRecorder.state !== "inactive") {
+          activeRecorder.stop();
+        }
+      }, 7000);
     } catch {
       setMessages((prev) => [...prev, { id: Date.now().toString(), role: "system", text: "Microphone permission denied or unavailable." }]);
     }

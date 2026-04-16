@@ -255,6 +255,8 @@ export default function Home() {
    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
    const audioChunksRef = useRef<Blob[]>([]);
    const lastAudioUrlRef = useRef<string | null>(null);
+   const autoStopTimerRef = useRef<number | null>(null);
+   const greetingPlayedRef = useRef(false);
    const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
 
    const [interactionMode, setInteractionMode] = useState<InteractionMode>("manual");
@@ -271,6 +273,8 @@ export default function Home() {
    const [voiceResult, setVoiceResult] = useState<VoiceResult | null>(null);
 
    const t = TRANSLATIONS[uiLang];
+   const greetingText =
+      "Namaste, Crediq me aapka swagat hai. Batayiye hum aapki kya sahayta kar sakte hain. Humse baat chit karne ke liye samne dikh rahe mic ko dabaye or apni samasya sanjha kare, ya fir aap chahe to khud bhi explore kar sakte ho.";
 
    const maturity = useMemo(() => {
       return Math.round(calculator.principal * Math.pow(1 + calculator.rate / 100, calculator.years));
@@ -333,6 +337,16 @@ export default function Home() {
       }
    };
 
+   const fallbackVoiceCommand = (spokenText: string) => {
+      const normalized = spokenText.toLowerCase();
+      if (/next|agla|अगला|next section/.test(normalized)) return "next_section";
+      if (/compare|comparison|तुलना/.test(normalized)) return "open_compare";
+      if (/low risk|safe|कम जोखिम|सुरक्षित/.test(normalized)) return "low_risk";
+      if (/best|best option|सबसे अच्छा/.test(normalized)) return "best_option";
+      if (/dashboard|app/.test(normalized)) return "open_dashboard";
+      return "none";
+   };
+
    const runVoiceFlow = async (text: string) => {
       if (!text.trim()) {
          setVoiceStatus("error");
@@ -358,7 +372,10 @@ export default function Home() {
             scrollToSection("calculator");
          }
 
-         executeVoiceCommand(orchestration.command || "none");
+         const command = orchestration.command && orchestration.command !== "none"
+            ? orchestration.command
+            : fallbackVoiceCommand(text);
+         executeVoiceCommand(command);
 
          if (orchestration.spoken_response) {
             await playTts(orchestration.spoken_response, lang);
@@ -413,6 +430,13 @@ export default function Home() {
          setIsListening(true);
          setVoiceStatus("listening");
          setTranscript("");
+
+         autoStopTimerRef.current = window.setTimeout(() => {
+            const activeRecorder = mediaRecorderRef.current;
+            if (activeRecorder && activeRecorder.state !== "inactive") {
+               activeRecorder.stop();
+            }
+         }, 7000);
       } catch {
          setVoiceStatus("error");
          setVoiceError("Microphone permission denied or unavailable.");
@@ -420,6 +444,10 @@ export default function Home() {
    };
 
    const stopListening = () => {
+      if (autoStopTimerRef.current) {
+         window.clearTimeout(autoStopTimerRef.current);
+         autoStopTimerRef.current = null;
+      }
       const recorder = mediaRecorderRef.current;
       if (recorder && recorder.state !== "inactive") {
          recorder.stop();
@@ -451,13 +479,35 @@ export default function Home() {
    }, [interactionMode, t.spoken.switchedManual]);
 
    useEffect(() => {
+      if (greetingPlayedRef.current) return;
+      greetingPlayedRef.current = true;
+
+      setUiLang("hi");
+      setVoiceReply(greetingText);
+
+      if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+      const utterance = new SpeechSynthesisUtterance(greetingText);
+      utterance.lang = "hi-IN";
+      utterance.rate = 0.95;
+      utterance.pitch = 1;
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(utterance);
+   }, [greetingText]);
+
+   useEffect(() => {
       return () => {
          const recorder = mediaRecorderRef.current;
          if (recorder && recorder.state !== "inactive") {
             recorder.stop();
          }
+         if (autoStopTimerRef.current) {
+            window.clearTimeout(autoStopTimerRef.current);
+         }
          if (lastAudioUrlRef.current) {
             URL.revokeObjectURL(lastAudioUrlRef.current);
+         }
+         if (typeof window !== "undefined" && "speechSynthesis" in window) {
+            window.speechSynthesis.cancel();
          }
       };
    }, []);
@@ -518,18 +568,9 @@ export default function Home() {
             </h1>
 
             <p className="text-xl text-[#00f0ff] font-semibold mb-3">{t.hero.support}</p>
-            <p className="text-slate-400 mb-10">{t.hero.sub}</p>
+            <p className="text-slate-400 mb-8">{t.hero.sub}</p>
 
-            <div className="relative max-w-3xl mx-auto p-6 rounded-4xl border border-white/10 bg-[#0a0b10]/80 backdrop-blur-xl">
-               <motion.p
-                  initial={{ opacity: 0.6 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ repeat: Infinity, repeatType: "reverse", duration: 1.2 }}
-                  className="absolute -top-7 left-1/2 -translate-x-1/2 text-sm text-[#00f0ff]"
-               >
-                  {t.hero.floatingHint}
-               </motion.p>
-
+            <div className="relative max-w-2xl mx-auto p-5 rounded-3xl border border-white/10 bg-[#0a0b10]/85 backdrop-blur-xl">
                <div className="flex flex-col md:flex-row gap-4 md:items-center">
                   <motion.button
                      data-voice-trigger="true"
@@ -555,6 +596,7 @@ export default function Home() {
                      <p className="text-sm text-slate-400 mt-1">
                         {voiceStatus === "listening" ? t.hero.statusListening : voiceStatus === "processing" ? t.hero.statusProcessing : t.hero.statusIdle}
                      </p>
+                     <p className="text-xs text-slate-500 mt-1">{isListening ? "Recording will auto-stop in 7 seconds" : t.hero.floatingHint}</p>
                   </div>
                </div>
 
@@ -564,8 +606,7 @@ export default function Home() {
                   {voiceError ? <p className="text-sm text-red-300 mt-2">{voiceError}</p> : null}
                </div>
 
-               <div className="mt-6 flex flex-wrap gap-3">
-                  <span className="text-xs text-slate-500 w-full">{t.hero.suggestionsTitle}</span>
+               <div className="mt-4 flex flex-wrap gap-3">
                   <button
                      onClick={() => runVoiceFlow(t.hero.suggestion1)}
                      className="px-4 py-2 rounded-full text-sm bg-white/5 border border-white/10 hover:border-[#00f0ff]/40"
@@ -577,12 +618,6 @@ export default function Home() {
                      className="px-4 py-2 rounded-full text-sm bg-white/5 border border-white/10 hover:border-[#00f0ff]/40"
                   >
                      {t.hero.suggestion2}
-                  </button>
-                  <button
-                     onClick={() => runVoiceFlow(t.hero.suggestion3)}
-                     className="px-4 py-2 rounded-full text-sm bg-white/5 border border-white/10 hover:border-[#00f0ff]/40"
-                  >
-                     {t.hero.suggestion3}
                   </button>
                </div>
             </div>
@@ -763,19 +798,41 @@ export default function Home() {
             ref={(el) => {
                sectionRefs.current.footer = el;
             }}
-            className="relative z-10 pt-24 pb-16 px-6 mx-auto max-w-400 text-center"
+            className="relative z-10 pt-24 pb-14 px-6 mx-auto max-w-400"
          >
-            <motion.div style={{ y: yParallax }} className="max-w-3xl mx-auto">
-               <h2 className="text-5xl md:text-7xl tracking-tighter font-light mb-8">
+            <motion.div style={{ y: yParallax }} className="max-w-5xl mx-auto">
+               <h2 className="text-4xl md:text-6xl tracking-tighter font-light mb-6 text-center">
                   {t.footer.title}
                </h2>
-               <button onClick={navToDashboard} className="inline-flex items-center gap-3 px-10 py-5 rounded-full border border-white/10 bg-white/5 hover:bg-white/10 transition-colors group shadow-2xl">
+               <div className="text-center">
+                  <button onClick={navToDashboard} className="inline-flex items-center gap-3 px-8 py-4 rounded-full border border-white/10 bg-white/5 hover:bg-white/10 transition-colors group shadow-2xl">
                   <span className="font-semibold text-lg text-white">{t.footer.cta}</span>
                   <div className="w-8 h-8 rounded-full bg-white text-black flex items-center justify-center group-hover:-rotate-45 transition-transform">
                      <ArrowRight className="w-4 h-4" />
                   </div>
-               </button>
-               <p className="mt-6 text-sm text-slate-500">{t.footer.sub}</p>
+                  </button>
+                  <p className="mt-5 text-sm text-slate-500">{t.footer.sub}</p>
+               </div>
+
+               <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-8 text-sm">
+                  <div>
+                     <h3 className="text-slate-200 font-semibold mb-3">Crediq</h3>
+                     <p className="text-slate-400">Voice-first financial guidance for every user, with a full manual flow always available.</p>
+                  </div>
+                  <div>
+                     <h3 className="text-slate-200 font-semibold mb-3">Quick Links</h3>
+                     <div className="flex flex-col gap-2 text-slate-400">
+                        <button className="text-left" onClick={() => scrollToSection("voice")}>Voice Assistant</button>
+                        <button className="text-left" onClick={() => scrollToSection("calculator")}>Calculator</button>
+                        <button className="text-left" onClick={() => scrollToSection("comparison")}>Compare</button>
+                        <button className="text-left" onClick={navToDashboard}>Dashboard</button>
+                     </div>
+                  </div>
+                  <div>
+                     <h3 className="text-slate-200 font-semibold mb-3">Support</h3>
+                     <p className="text-slate-400">Need help? Use the microphone and speak naturally in Hindi, English, or Hinglish.</p>
+                  </div>
+               </div>
             </motion.div>
          </footer>
       </div>
