@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { 
   ArrowRight, BrainCircuit, ScanLine, Activity, Cpu, Mic, ShieldCheck, 
-  Lock, ArrowUpRight, Zap, Target, BookOpen, Layers
+  Lock, ArrowUpRight, Zap, Target, BookOpen, Layers, CheckCircle2
 } from "lucide-react";
 
 // Cross-Browser Speech Recognition Support
