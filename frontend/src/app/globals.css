@@ -22,7 +22,10 @@
 
 @layer utilities {
   .gradient-text {
-    @apply text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-[#ca8bfe] to-[#8ce8df];
+    background-image: linear-gradient(to right, #818cf8, #ca8bfe, #8ce8df);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
   }
   
   .glass-card {
