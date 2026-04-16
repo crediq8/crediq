@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, useScroll, useTransform, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { getTtsAudio, orchestrateVoice, transcribeAudio } from "../lib/api";
@@ -257,6 +257,7 @@ export default function Home() {
    const lastAudioUrlRef = useRef<string | null>(null);
    const autoStopTimerRef = useRef<number | null>(null);
    const greetingPlayedRef = useRef(false);
+   const greetingRetryRef = useRef(false);
    const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
 
    const [interactionMode, setInteractionMode] = useState<InteractionMode>("manual");
@@ -267,6 +268,7 @@ export default function Home() {
    const [transcript, setTranscript] = useState("");
    const [voiceReply, setVoiceReply] = useState("");
    const [voiceError, setVoiceError] = useState("");
+   const [needsGreetingInteraction, setNeedsGreetingInteraction] = useState(false);
    const [activeSectionIndex, setActiveSectionIndex] = useState(0);
 
    const [calculator, setCalculator] = useState({ principal: 50000, years: 2, rate: 7.2 });
@@ -280,7 +282,7 @@ export default function Home() {
       return Math.round(calculator.principal * Math.pow(1 + calculator.rate / 100, calculator.years));
    }, [calculator]);
 
-   const playTts = async (text: string, lang: UILang) => {
+   const playTts = useCallback(async (text: string, lang: UILang) => {
       const audioBlob = await getTtsAudio(text, lang);
       if (lastAudioUrlRef.current) {
          URL.revokeObjectURL(lastAudioUrlRef.current);
@@ -288,8 +290,31 @@ export default function Home() {
       const url = URL.createObjectURL(audioBlob);
       lastAudioUrlRef.current = url;
       const audio = new Audio(url);
-      void audio.play();
-   };
+      await audio.play();
+   }, []);
+
+   const playSoftGreeting = useCallback(async () => {
+      try {
+         await playTts(greetingText, "hi");
+         return true;
+      } catch {
+         if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+            return false;
+         }
+
+         return await new Promise<boolean>((resolve) => {
+            const utterance = new SpeechSynthesisUtterance(greetingText);
+            utterance.lang = "hi-IN";
+            utterance.rate = 0.92;
+            utterance.pitch = 0.95;
+            utterance.volume = 0.9;
+            utterance.onend = () => resolve(true);
+            utterance.onerror = () => resolve(false);
+            window.speechSynthesis.cancel();
+            window.speechSynthesis.speak(utterance);
+         });
+      }
+   }, [greetingText, playTts]);
 
    const scrollToSection = (section: (typeof SECTION_ORDER)[number]) => {
       const node = sectionRefs.current[section];
@@ -483,16 +508,37 @@ export default function Home() {
       greetingPlayedRef.current = true;
 
       setUiLang("hi");
-      setVoiceReply(greetingText);
+      setVoiceReply("Voice assistant ready. Mic dabakar baat shuru karein.");
 
-      if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
-      const utterance = new SpeechSynthesisUtterance(greetingText);
-      utterance.lang = "hi-IN";
-      utterance.rate = 0.95;
-      utterance.pitch = 1;
-      window.speechSynthesis.cancel();
-      window.speechSynthesis.speak(utterance);
-   }, [greetingText]);
+      const runGreeting = async () => {
+         const played = await playSoftGreeting();
+         if (!played) {
+            setNeedsGreetingInteraction(true);
+         }
+      };
+
+      void runGreeting();
+   }, [playSoftGreeting]);
+
+   useEffect(() => {
+      if (!needsGreetingInteraction || greetingRetryRef.current) return;
+
+      const onFirstInteraction = async () => {
+         greetingRetryRef.current = true;
+         const played = await playSoftGreeting();
+         if (played) {
+            setNeedsGreetingInteraction(false);
+         }
+      };
+
+      window.addEventListener("pointerdown", onFirstInteraction, { once: true });
+      window.addEventListener("keydown", onFirstInteraction, { once: true });
+
+      return () => {
+         window.removeEventListener("pointerdown", onFirstInteraction);
+         window.removeEventListener("keydown", onFirstInteraction);
+      };
+   }, [needsGreetingInteraction, playSoftGreeting]);
 
    useEffect(() => {
       return () => {
