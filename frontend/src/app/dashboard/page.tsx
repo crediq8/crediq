@@ -52,8 +52,8 @@ export default function Dashboard() {
     setIsProcessing(true);
 
     try {
-      // Hit our Python FastAPI Backend
-      const response = await fetch("http://127.0.0.1:8000/ai/chat", {
+      // Hit our Live Python FastAPI Backend
+      const response = await fetch("https://crediq.onrender.com/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: userMsg.text }),

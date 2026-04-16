@@ -14,7 +14,7 @@ app = FastAPI(title="Crediq Intelligence API")
 # Setup CORS to allow Next.js frontend to communicate with FastAPI backend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3001", "http://localhost:3000"], 
+    allow_origins=["*"], 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
