@@ -2,10 +2,11 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { apiJson, transcribeAudio } from "../../lib/api";
 import { 
-  Send, Mic, Search, Settings, User, 
-  Calculator, TrendingUp, ShieldCheck, Heart,
-  BrainCircuit, ArrowRight, Activity, Zap, CheckCircle2, Info
+  Send, Mic, Search, User, 
+  Calculator, TrendingUp, Heart,
+  BrainCircuit, Activity, CheckCircle2, Info
 } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
@@ -16,10 +17,24 @@ type Message = {
   isTyping?: boolean;
 };
 
-// Cross-Browser Speech Recognition Support
-const SpeechRecognitionAPI = 
-  (typeof window !== "undefined" && (window as any).SpeechRecognition) || 
-  (typeof window !== "undefined" && (window as any).webkitSpeechRecognition);
+type ChatApiResponse = {
+  status: string;
+  reply: string;
+};
+
+type AnalyzeApiResponse = {
+  status: string;
+  insight: string;
+};
+
+type ParsedIntent = {
+  intent: string;
+  data: {
+    amount_in_rupees?: number | null;
+    years?: number | null;
+    rate?: number | null;
+  };
+};
 
 export default function Dashboard() {
   const [isRecording, setIsRecording] = useState(false);
@@ -40,7 +55,10 @@ export default function Dashboard() {
   const [years, setYears] = useState<number>(3);
   const [rate, setRate] = useState<number>(7.2);
   const [maturity, setMaturity] = useState<number>(0);
-  const [chartData, setChartData] = useState<any[]>([]);
+  const [chartData, setChartData] = useState<Array<{ year: string; principal: number; projected: number }>>([]);
+
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
 
   // 1. REAL-TIME CALCULATION ENGINE
   useEffect(() => {
@@ -66,14 +84,12 @@ export default function Dashboard() {
     const fetchInsight = async () => {
         setIsInsightLoading(true);
         try {
-            const response = await fetch("https://crediq.onrender.com/ai/analyze", {
-               method: "POST",
-               headers: { "Content-Type": "application/json" },
-               body: JSON.stringify({ amount, years, rate, maturity, intent: activeModule })
-            });
-            const data = await response.json();
+          const data = await apiJson<AnalyzeApiResponse>("/ai/analyze", {
+            method: "POST",
+            body: JSON.stringify({ amount, years, rate, maturity, intent: activeModule }),
+          });
             setInsight(data.insight);
-        } catch (err) {
+        } catch {
             setInsight("Live connection to Crediq AI lost. Calculating strictly offline.");
         } finally {
             setIsInsightLoading(false);
@@ -90,38 +106,55 @@ export default function Dashboard() {
   const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   useEffect(() => scrollToBottom(), [messages]);
 
-  // 3. VOICE MODE (SPEECH TO TEXT)
-  const toggleRecording = () => {
-    if (!SpeechRecognitionAPI) {
-       alert("Voice mode is not supported by your browser.");
-       return;
-    }
-    
-    if (isRecording) {
-       setIsRecording(false);
-       // Native stop handled automatically below if we had a persistent instance, but here we just manage state visually.
-       return;
-    }
-
-    const recognition = new SpeechRecognitionAPI();
-    recognition.continuous = false;
-    recognition.interimResults = false;
-    recognition.lang = 'en-IN'; // Indian context
-
-    recognition.onstart = () => setIsRecording(true);
-    
-    recognition.onresult = (event: any) => {
-        const transcript = event.results[0][0].transcript;
-        setInputText(transcript);
-        setIsRecording(false);
-        // Auto-send upon finishing talking
-        setTimeout(() => handleVoiceSend(transcript), 200);
+  useEffect(() => {
+    return () => {
+      const recorder = mediaRecorderRef.current;
+      if (recorder && recorder.state !== "inactive") recorder.stop();
     };
+  }, []);
 
-    recognition.onerror = () => setIsRecording(false);
-    recognition.onend = () => setIsRecording(false);
-    
-    recognition.start();
+  // 3. VOICE MODE (BACKEND STT)
+  const toggleRecording = async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setMessages((prev) => [...prev, { id: Date.now().toString(), role: "system", text: "Voice capture is not supported in this browser." }]);
+      return;
+    }
+
+    if (isRecording) {
+      const recorder = mediaRecorderRef.current;
+      if (recorder && recorder.state !== "inactive") recorder.stop();
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = recorder;
+      audioChunksRef.current = [];
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) audioChunksRef.current.push(event.data);
+      };
+
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((track) => track.stop());
+        setIsRecording(false);
+        const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+
+        try {
+          const stt = await transcribeAudio(audioBlob);
+          setInputText(stt.transcript);
+          setTimeout(() => handleVoiceSend(stt.transcript), 150);
+        } catch {
+          setMessages((prev) => [...prev, { id: Date.now().toString(), role: "system", text: "Voice processing failed. Please try again." }]);
+        }
+      };
+
+      recorder.start();
+      setIsRecording(true);
+    } catch {
+      setMessages((prev) => [...prev, { id: Date.now().toString(), role: "system", text: "Microphone permission denied or unavailable." }]);
+    }
   };
 
   const handleVoiceSend = async (textOveride: string) => {
@@ -139,15 +172,17 @@ export default function Dashboard() {
     setIsProcessing(true);
 
     try {
-      const response = await fetch("https://crediq.onrender.com/ai/chat", {
+      const result = await apiJson<ChatApiResponse>("/ai/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: userMsg.text }),
       });
 
-      const result = await response.json();
-      let parsedResponse: any;
-      try { parsedResponse = JSON.parse(result.reply); } catch { parsedResponse = { intent: "general", data: {} }; }
+      let parsedResponse: ParsedIntent;
+      try {
+        parsedResponse = JSON.parse(result.reply) as ParsedIntent;
+      } catch {
+        parsedResponse = { intent: "general", data: {} };
+      }
 
       setActiveModule(parsedResponse.intent === "general" ? "fd" : parsedResponse.intent);
       
@@ -162,7 +197,7 @@ export default function Dashboard() {
          text: `I've mapped your parameters. Updating interactive view for ₹${parsedResponse.data.amount_in_rupees?.toLocaleString('en-IN') || "current amount"}.` 
       }]);
 
-    } catch (error) {
+    } catch {
       setMessages(prev => [...prev, { id: "error", role: "system", text: "Error: Connection failed." }]);
     } finally {
       setIsProcessing(false);
