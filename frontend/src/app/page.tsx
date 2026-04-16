@@ -202,7 +202,7 @@ export default function Home() {
             <div>
               <h3 className="text-sm font-semibold text-indigo-400 uppercase tracking-wider mb-2">The Crediq Way</h3>
               <p className="text-2xl md:text-3xl font-medium leading-relaxed text-white">
-                "I want to save 50 Lakhs for a house in 3 years."
+                &quot;I want to save 50 Lakhs for a house in 3 years.&quot;
               </p>
               <div className="mt-8 space-y-4">
                 <div className="glass-panel p-4 flex items-center justify-between">
@@ -251,12 +251,12 @@ export default function Home() {
         
         <div className="mt-12 h-16 w-full max-w-sm mx-auto flex items-center justify-center gap-1 opacity-50">
            {/* Visual Waveform mock */}
-           {[...Array(12)].map((_, i) => (
-             <motion.div 
+            {[20, 45, 30, 50, 25, 40, 15, 35, 55, 10].map((h, i) => (
+              <motion.div 
                 key={i}
                 className="w-1.5 bg-indigo-400 rounded-full"
-                animate={{ height: ["10px", `${20 + Math.random() * 40}px`, "10px"] }}
-                transition={{ duration: 0.5 + Math.random(), repeat: Infinity }}
+                animate={{ height: ["10px", `${10 + h}px`, "10px"] }}
+                transition={{ duration: 0.5 + (h / 100), repeat: Infinity }}
              />
            ))}
         </div>

@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
-  Send, Mic, Search, Bell, Settings, User, 
+  Send, Mic, Search, Settings, User, 
   Calculator, TrendingUp, ShieldCheck, Heart,
   BrainCircuit, ArrowRight, CornerDownRight, Landmark
 } from "lucide-react";
@@ -28,7 +28,7 @@ export default function Dashboard() {
   const [inputText, setInputText] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [activeModule, setActiveModule] = useState<string>("greeting");
-  const [moduleData, setModuleData] = useState<any>(null);
+  const [moduleData, setModuleData] = useState<IntentData["data"] | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const [messages, setMessages] = useState<Message[]>([
@@ -65,7 +65,7 @@ export default function Dashboard() {
       let parsedResponse: IntentData;
       try {
         parsedResponse = JSON.parse(result.reply);
-      } catch (e) {
+      } catch {
         parsedResponse = { intent: "general", data: {} };
       }
 
@@ -257,7 +257,7 @@ export default function Dashboard() {
                       <div className="p-2 bg-indigo-500/20 rounded-lg text-indigo-400"><Calculator className="w-4 h-4" /></div>
                       <div>
                         <div className="text-sm font-medium">Try saying:</div>
-                        <div className="text-xs text-slate-400">"Calculate FD returns for ₹5 Lakhs over 3 years"</div>
+                        <div className="text-xs text-slate-400">&quot;Calculate FD returns for ₹5 Lakhs over 3 years&quot;</div>
                       </div>
                     </div>
                   </div>
