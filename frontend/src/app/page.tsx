@@ -705,7 +705,7 @@ export default function Home() {
                      <span>{t.compare.labels.rate}</span>
                      <span>{t.compare.labels.risk}</span>
                   </div>
-                  {t.compare.rows.map((row: string[]) => (
+                  {t.compare.rows.map((row) => (
                      <div key={row[0]} className="grid grid-cols-3 py-4 border-b border-white/5 last:border-b-0">
                         <span>{row[0]}</span>
                         <span>{row[1]}</span>
