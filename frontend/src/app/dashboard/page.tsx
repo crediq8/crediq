@@ -385,7 +385,7 @@ export default function Dashboard() {
                               <Tooltip 
                                 contentStyle={{ backgroundColor: '#0f172a', borderColor: '#1e293b', borderRadius: '12px', fontSize: '12px' }}
                                 itemStyle={{ color: '#00f0ff', fontWeight: 'bold' }}
-                                formatter={(value: number) => [`₹${value.toLocaleString('en-IN')}`, "Value"]}
+                                formatter={(value) => [`₹${Number(value).toLocaleString('en-IN')}`, "Value"]}
                               />
                               <Area type="monotone" dataKey="projected" stroke="#00f0ff" strokeWidth={2} fillOpacity={1} fill="url(#colorProjected)" />
                             </AreaChart>
