@@ -235,7 +235,7 @@ export default function Dashboard() {
       try {
         parsedResponse = JSON.parse(result.reply) as ParsedIntent;
       } catch {
-        parsedResponse = { intent: "general", data: {} };
+        parsedResponse = { module_intent: "general", data: {} };
       }
 
       const moduleIntent = parsedResponse.module_intent || "fd";
