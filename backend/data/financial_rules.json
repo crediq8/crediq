@@ -1,0 +1,46 @@
+{
+  "rules": [
+    {
+      "id": "R1",
+      "title": "Emergency fund first",
+      "condition": "if emergency_fund_months < 6",
+      "action": "prioritize emergency fund before locking large FD",
+      "why": "liquidity is important for sudden expenses"
+    },
+    {
+      "id": "R2",
+      "title": "FD suggestion",
+      "condition": "if user wants low risk and 1-5 year parking",
+      "action": "suggest Tier 1 bank FD",
+      "why": "capital protection is the primary goal"
+    },
+    {
+      "id": "R3",
+      "title": "Avoid over-allocation to FD",
+      "condition": "if inflation-adjusted return is too low for long-term goals",
+      "action": "offer blended options and planning split",
+      "why": "long-term purchasing power may fall"
+    },
+    {
+      "id": "R4",
+      "title": "Income-savings logic",
+      "condition": "if monthly savings < 20% of income",
+      "action": "focus on budget discipline before aggressive investing",
+      "why": "cash flow stability comes first"
+    },
+    {
+      "id": "R5",
+      "title": "Fraud guard",
+      "condition": "if promise is guaranteed high return > 15% with urgency",
+      "action": "raise fraud warning and suggest verification",
+      "why": "classic scam pattern"
+    }
+  ],
+  "fraud_signals": [
+    "guaranteed double money",
+    "urgent transfer request",
+    "ask for OTP or PIN",
+    "unknown app install request",
+    "returns too good to be true"
+  ]
+}

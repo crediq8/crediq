@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { apiJson, transcribeAudio } from "../../lib/api";
+import { apiJson, createSession, transcribeAudio, upsertMemory } from "../../lib/api";
 import { 
   Send, Mic, Search, User, 
   Calculator, TrendingUp, Heart,
@@ -20,6 +20,7 @@ type Message = {
 type ChatApiResponse = {
   status: string;
   reply: string;
+  session_id?: string;
 };
 
 type AnalyzeApiResponse = {
@@ -28,13 +29,22 @@ type AnalyzeApiResponse = {
 };
 
 type ParsedIntent = {
-  intent: string;
+  intent_category?: "calculation" | "comparison" | "planning" | "fraud" | "general";
+  module_intent?: string;
+  clarification_needed?: boolean;
+  clarification_question_hi?: string;
+  reply_hi?: string;
   data: {
     amount_in_rupees?: number | null;
     years?: number | null;
     rate?: number | null;
+    income?: number | null;
+    savings?: number | null;
+    goal?: string | null;
   };
 };
+
+const SESSION_STORAGE_KEY = "crediq_session_id_v1";
 
 export default function Dashboard() {
   const [isRecording, setIsRecording] = useState(false);
@@ -49,6 +59,7 @@ export default function Dashboard() {
 
   const [insight, setInsight] = useState<string>("");
   const [isInsightLoading, setIsInsightLoading] = useState(false);
+  const [sessionId, setSessionId] = useState<string>("");
 
   // Centralized Live State
   const [amount, setAmount] = useState<number>(500000);
@@ -60,6 +71,27 @@ export default function Dashboard() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const autoStopTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const setupSession = async () => {
+      if (typeof window === "undefined") return;
+      const saved = window.localStorage.getItem(SESSION_STORAGE_KEY);
+      if (saved) {
+        setSessionId(saved);
+        return;
+      }
+
+      try {
+        const created = await createSession();
+        setSessionId(created.session_id);
+        window.localStorage.setItem(SESSION_STORAGE_KEY, created.session_id);
+      } catch {
+        // Session will be created lazily by backend if this fails.
+      }
+    };
+
+    void setupSession();
+  }, []);
 
   // 1. REAL-TIME CALCULATION ENGINE
   useEffect(() => {
@@ -190,8 +222,14 @@ export default function Dashboard() {
     try {
       const result = await apiJson<ChatApiResponse>("/ai/chat", {
         method: "POST",
-        body: JSON.stringify({ message: userMsg.text }),
+        body: JSON.stringify({ message: userMsg.text, session_id: sessionId || undefined }),
       });
+
+      const effectiveSessionId = result.session_id || sessionId;
+      if (result.session_id && result.session_id !== sessionId && typeof window !== "undefined") {
+        setSessionId(result.session_id);
+        window.localStorage.setItem(SESSION_STORAGE_KEY, result.session_id);
+      }
 
       let parsedResponse: ParsedIntent;
       try {
@@ -200,17 +238,29 @@ export default function Dashboard() {
         parsedResponse = { intent: "general", data: {} };
       }
 
-      setActiveModule(parsedResponse.intent === "general" ? "fd" : parsedResponse.intent);
+      const moduleIntent = parsedResponse.module_intent || "fd";
+      setActiveModule(moduleIntent === "general" ? "fd" : moduleIntent);
       
       // Auto-update variables based on NLP
       if (parsedResponse.data.amount_in_rupees) setAmount(parsedResponse.data.amount_in_rupees);
       if (parsedResponse.data.years) setYears(parsedResponse.data.years);
       if (parsedResponse.data.rate) setRate(parsedResponse.data.rate);
 
+      if (effectiveSessionId && (parsedResponse.data.income || parsedResponse.data.savings || parsedResponse.data.goal)) {
+        await upsertMemory({
+          session_id: effectiveSessionId,
+          income: parsedResponse.data.income,
+          savings: parsedResponse.data.savings,
+          goals: parsedResponse.data.goal ? [parsedResponse.data.goal] : [],
+        });
+      }
+
       setMessages(prev => [...prev, { 
          id: Date.now().toString(), 
          role: "ai", 
-         text: `I've mapped your parameters. Updating interactive view for ₹${parsedResponse.data.amount_in_rupees?.toLocaleString('en-IN') || "current amount"}.` 
+         text: parsedResponse.clarification_needed
+           ? parsedResponse.clarification_question_hi || "कृपया राशि, समय और लक्ष्य दोबारा बताएं।"
+           : parsedResponse.reply_hi || `मैंने आपकी जानकारी समझ ली है। ₹${parsedResponse.data.amount_in_rupees?.toLocaleString('en-IN') || "मौजूदा राशि"} के हिसाब से आगे बढ़ते हैं।`
       }]);
 
     } catch {
@@ -225,7 +275,7 @@ export default function Dashboard() {
       {/* 4. BACKGROUND ANIMATION LAYER */}
       <div className="absolute inset-0 pointer-events-none z-0 mix-blend-screen opacity-30 overflow-hidden">
          <motion.div 
-            className="absolute -top-[20%] -right-[10%] w-[60%] h-[60%] rounded-full bg-gradient-to-tr from-indigo-600/20 to-[#00f0ff]/20 blur-[120px]"
+            className="absolute -top-[20%] -right-[10%] w-[60%] h-[60%] rounded-full bg-linear-to-tr from-indigo-600/20 to-[#00f0ff]/20 blur-[120px]"
             animate={{ scale: [1, 1.05, 1], rotate: [0, 5, 0] }}
             transition={{ duration: 15, repeat: Infinity, ease: "linear" }}
          />
@@ -234,7 +284,7 @@ export default function Dashboard() {
       {/* Sidebar Navigation */}
       <nav className="relative z-10 w-20 md:w-64 border-r border-white/5 flex flex-col items-center md:items-start py-6 bg-[#0a0b10]/80 backdrop-blur-xl">
         <div className="flex items-center gap-3 px-6 mb-12">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#f70bff] to-[#00f0ff] flex items-center justify-center shrink-0">
+          <div className="w-8 h-8 rounded-xl bg-linear-to-tr from-[#f70bff] to-[#00f0ff] flex items-center justify-center shrink-0">
             <span className="text-white font-bold text-lg">C</span>
           </div>
           <span className="font-semibold tracking-tighter text-xl hidden md:block">Crediq</span>
@@ -295,7 +345,7 @@ export default function Dashboard() {
                   >
                     <div className={`max-w-[85%] md:max-w-[75%] rounded-2xl p-4 shadow-lg ${
                       msg.role === 'user' 
-                        ? 'bg-gradient-to-tr from-indigo-600 to-[#00f0ff]/80 text-white rounded-br-none' 
+                        ? 'bg-linear-to-tr from-indigo-600 to-[#00f0ff]/80 text-white rounded-br-none' 
                         : msg.role === 'system'
                         ? 'bg-transparent border border-white/5 text-slate-500 text-xs uppercase tracking-widest font-medium'
                         : 'bg-white/5 border border-white/10 text-slate-200 rounded-tl-none backdrop-blur-xl'
@@ -356,7 +406,7 @@ export default function Dashboard() {
           </div>
 
           {/* Right Panel: Interactive Modules */}
-          <div className="w-full lg:w-[500px] xl:w-[600px] bg-[#050508] p-4 md:p-8 overflow-y-auto border-l border-white/5">
+          <div className="w-full lg:w-125 xl:w-150 bg-[#050508] p-4 md:p-8 overflow-y-auto border-l border-white/5">
             <AnimatePresence mode="wait">
               
               {(activeModule === "fd" || activeModule === "plan") && (
@@ -380,14 +430,14 @@ export default function Dashboard() {
 
                   {/* Contextual AI Insight Box */}
                   <motion.div className="mb-8 relative overflow-hidden bg-white/5 border border-[#f70bff]/30 rounded-2xl p-5">
-                     <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-[#f70bff] to-[#00f0ff]" />
+                     <div className="absolute top-0 left-0 w-1 h-full bg-linear-to-b from-[#f70bff] to-[#00f0ff]" />
                      <div className="flex items-start gap-3">
                         <Info className="w-4 h-4 text-[#f70bff] shrink-0 mt-0.5" />
                         <div className="flex-1">
                            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1 flex items-center gap-2">
                              AI Insight {isInsightLoading && <div className="w-2 h-2 rounded-full border border-t-transparent border-white animate-spin" />}
                            </h3>
-                           <p className="text-sm text-slate-200 leading-relaxed min-h-[40px]">
+                           <p className="text-sm text-slate-200 leading-relaxed min-h-10">
                               {insight || "Analyzing current mathematical spread..."}
                            </p>
                         </div>
@@ -421,7 +471,7 @@ export default function Dashboard() {
                      </div>
 
                      {/* Dynamic Recharts Visualization */}
-                     <div className="mt-8 p-4 bg-white/5 border border-white/10 rounded-2xl h-[250px] relative">
+                     <div className="mt-8 p-4 bg-white/5 border border-white/10 rounded-2xl h-62.5 relative">
                          <h3 className="text-xs font-medium text-slate-400 mb-4 uppercase tracking-widest">Growth Visualization</h3>
                          <ResponsiveContainer width="100%" height="80%">
                             <AreaChart data={chartData} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>

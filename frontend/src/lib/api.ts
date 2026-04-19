@@ -5,16 +5,35 @@ export const API_BASE_URL =
 
 export type VoiceOrchestrationResult = {
   status: string;
+  session_id: string;
   language: "en" | "hi";
   intent: string;
+  intent_category: "calculation" | "comparison" | "planning" | "fraud" | "general";
   command: string;
   data: {
     amount_in_rupees?: number | null;
     years?: number | null;
     rate?: number | null;
+    income?: number | null;
+    savings?: number | null;
+    goal?: string | null;
   };
+  clarification_needed?: boolean;
+  clarification_question_hi?: string;
   spoken_response: string;
   ui_response: string;
+};
+
+export type SessionResponse = {
+  status: string;
+  session_id: string;
+};
+
+export type MemoryPayload = {
+  session_id: string;
+  income?: number | null;
+  savings?: number | null;
+  goals?: string[];
 };
 
 export const apiJson = async <T>(path: string, init?: RequestInit): Promise<T> => {
@@ -54,10 +73,11 @@ export const transcribeAudio = async (audioBlob: Blob, fileName = "voice.webm") 
 export const orchestrateVoice = async (
   transcript: string,
   uiLanguage: "en" | "hi",
+  sessionId?: string,
 ): Promise<VoiceOrchestrationResult> => {
   return apiJson<VoiceOrchestrationResult>("/voice/orchestrate", {
     method: "POST",
-    body: JSON.stringify({ transcript, ui_language: uiLanguage }),
+    body: JSON.stringify({ transcript, ui_language: uiLanguage, session_id: sessionId }),
   });
 };
 
@@ -74,4 +94,17 @@ export const getTtsAudio = async (text: string, language: "en" | "hi") => {
   }
 
   return response.blob();
+};
+
+export const createSession = async () => {
+  return apiJson<SessionResponse>("/session/new", {
+    method: "GET",
+  });
+};
+
+export const upsertMemory = async (payload: MemoryPayload) => {
+  return apiJson<{ status: string; session_id: string }>("/memory/upsert", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 };

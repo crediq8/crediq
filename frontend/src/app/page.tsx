@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, useScroll, useTransform, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
-import { getTtsAudio, orchestrateVoice, transcribeAudio } from "../lib/api";
+import { createSession, getTtsAudio, orchestrateVoice, transcribeAudio, upsertMemory } from "../lib/api";
 import {
    ArrowRight,
    Cpu,
@@ -25,7 +25,12 @@ type VoiceResult = {
    rate: number;
    maturity: number;
    recommendation: string;
+   intentCategory?: string;
 };
+
+const SESSION_STORAGE_KEY = "crediq_session_id_v1";
+const GREETING_STORAGE_KEY = "crediq_greeting_played_v1";
+const MUTE_STORAGE_KEY = "crediq_voice_muted_v1";
 
 const SECTION_ORDER = [
    "voice",
@@ -270,19 +275,22 @@ export default function Home() {
    const [voiceError, setVoiceError] = useState("");
    const [needsGreetingInteraction, setNeedsGreetingInteraction] = useState(false);
    const [activeSectionIndex, setActiveSectionIndex] = useState(0);
+   const [sessionId, setSessionId] = useState("");
+   const [isMuted, setIsMuted] = useState(false);
 
    const [calculator, setCalculator] = useState({ principal: 50000, years: 2, rate: 7.2 });
    const [voiceResult, setVoiceResult] = useState<VoiceResult | null>(null);
 
    const t = TRANSLATIONS[uiLang];
    const greetingText =
-      "Namaste, Crediq me aapka swagat hai. Batayiye hum aapki kya sahayta kar sakte hain. Humse baat chit karne ke liye samne dikh rahe mic ko dabaye or apni samasya sanjha kare, ya fir aap chahe to khud bhi explore kar sakte ho.";
+      "Namaste, main aapki madad ke liye yahan hoon. Aap mic button dabakar apna sawaal pooch sakte hain.";
 
    const maturity = useMemo(() => {
       return Math.round(calculator.principal * Math.pow(1 + calculator.rate / 100, calculator.years));
    }, [calculator]);
 
    const playTts = useCallback(async (text: string, lang: UILang) => {
+      if (isMuted) return;
       const audioBlob = await getTtsAudio(text, lang);
       if (lastAudioUrlRef.current) {
          URL.revokeObjectURL(lastAudioUrlRef.current);
@@ -291,7 +299,7 @@ export default function Home() {
       lastAudioUrlRef.current = url;
       const audio = new Audio(url);
       await audio.play();
-   }, []);
+   }, [isMuted]);
 
    const playSoftGreeting = useCallback(async () => {
       try {
@@ -324,11 +332,11 @@ export default function Home() {
       setActiveSectionIndex(SECTION_ORDER.indexOf(section));
    };
 
-   const applyInvestment = (principal: number, years: number, rate: number, recommendation: string) => {
+   const applyInvestment = (principal: number, years: number, rate: number, recommendation: string, intentCategory?: string) => {
       const projected = Math.round(principal * Math.pow(1 + rate / 100, years));
 
       setCalculator({ principal, years, rate });
-      setVoiceResult({ principal, years, rate, maturity: projected, recommendation });
+      setVoiceResult({ principal, years, rate, maturity: projected, recommendation, intentCategory });
    };
 
    const executeVoiceCommand = (command: string) => {
@@ -382,19 +390,39 @@ export default function Home() {
       try {
          setIsVoiceBusy(true);
          setVoiceStatus("processing");
-         const orchestration = await orchestrateVoice(text, uiLang);
+         const orchestration = await orchestrateVoice(text, uiLang, sessionId || undefined);
          const lang = orchestration.language === "hi" ? "hi" : "en";
 
+         if (orchestration.session_id && orchestration.session_id !== sessionId) {
+            setSessionId(orchestration.session_id);
+            if (typeof window !== "undefined") {
+               window.localStorage.setItem(SESSION_STORAGE_KEY, orchestration.session_id);
+            }
+         }
+
          setUiLang(lang);
-         setVoiceReply(orchestration.ui_response || orchestration.spoken_response);
+         if (orchestration.clarification_needed) {
+            setVoiceReply(orchestration.clarification_question_hi || t.hero.fallbackHi);
+         } else {
+            setVoiceReply(orchestration.ui_response || orchestration.spoken_response);
+         }
          setVoiceError("");
 
          if (orchestration.data?.amount_in_rupees && orchestration.data?.years) {
             const principal = Number(orchestration.data.amount_in_rupees);
             const years = Number(orchestration.data.years);
             const rate = orchestration.data.rate ? Number(orchestration.data.rate) : 7.2;
-            applyInvestment(principal, years, rate, "Tier 1 Bank FD");
+            applyInvestment(principal, years, rate, "Tier 1 Bank FD", orchestration.intent_category);
             scrollToSection("calculator");
+         }
+
+         if (orchestration.data?.income || orchestration.data?.savings || orchestration.data?.goal) {
+            await upsertMemory({
+               session_id: orchestration.session_id,
+               income: orchestration.data.income,
+               savings: orchestration.data.savings,
+               goals: orchestration.data.goal ? [orchestration.data.goal] : [],
+            });
          }
 
          const command = orchestration.command && orchestration.command !== "none"
@@ -402,7 +430,9 @@ export default function Home() {
             : fallbackVoiceCommand(text);
          executeVoiceCommand(command);
 
-         if (orchestration.spoken_response) {
+         if (orchestration.clarification_needed) {
+            await playTts(orchestration.clarification_question_hi || t.hero.fallbackHi, "hi");
+         } else if (orchestration.spoken_response) {
             await playTts(orchestration.spoken_response, lang);
          }
          setVoiceStatus("idle");
@@ -504,13 +534,49 @@ export default function Home() {
    }, [interactionMode, t.spoken.switchedManual]);
 
    useEffect(() => {
+      const setupSession = async () => {
+         if (typeof window === "undefined") return;
+         const storedSession = window.localStorage.getItem(SESSION_STORAGE_KEY);
+         const storedMute = window.localStorage.getItem(MUTE_STORAGE_KEY);
+         if (storedMute === "1") {
+            setIsMuted(true);
+         }
+
+         if (storedSession) {
+            setSessionId(storedSession);
+            return;
+         }
+
+         try {
+            const created = await createSession();
+            setSessionId(created.session_id);
+            window.localStorage.setItem(SESSION_STORAGE_KEY, created.session_id);
+         } catch {
+            // Non-blocking: voice still works with backend-generated session IDs.
+         }
+      };
+
+      void setupSession();
+   }, []);
+
+   useEffect(() => {
       if (greetingPlayedRef.current) return;
       greetingPlayedRef.current = true;
 
       setUiLang("hi");
       setVoiceReply("Voice assistant ready. Mic dabakar baat shuru karein.");
 
+      if (typeof window !== "undefined") {
+         const alreadyPlayed = window.localStorage.getItem(GREETING_STORAGE_KEY);
+         if (alreadyPlayed === "1") {
+            return;
+         }
+      }
+
       const runGreeting = async () => {
+         if (typeof window !== "undefined") {
+            window.localStorage.setItem(GREETING_STORAGE_KEY, "1");
+         }
          const played = await playSoftGreeting();
          if (!played) {
             setNeedsGreetingInteraction(true);
@@ -585,6 +651,20 @@ export default function Home() {
                </div>
 
                <div className="flex items-center gap-3">
+                  <button
+                     onClick={() => {
+                        setIsMuted((prev) => {
+                           const nextValue = !prev;
+                           if (typeof window !== "undefined") {
+                              window.localStorage.setItem(MUTE_STORAGE_KEY, nextValue ? "1" : "0");
+                           }
+                           return nextValue;
+                        });
+                     }}
+                     className="px-4 py-2 rounded-full bg-white/5 border border-white/10 text-xs md:text-sm text-slate-200"
+                  >
+                     {isMuted ? "Unmute Voice" : "Mute Voice"}
+                  </button>
                   <button
                      onClick={() => setUiLang((prev) => (prev === "en" ? "hi" : "en"))}
                      className="px-4 py-2 rounded-full bg-white/5 border border-white/10 text-xs md:text-sm text-slate-200 flex items-center gap-2"
@@ -684,6 +764,11 @@ export default function Home() {
                      <p className="text-slate-300 mb-3">
                         {t.hero.recommendation}: {voiceResult.recommendation}
                      </p>
+                     {voiceResult.intentCategory ? (
+                        <p className="text-slate-400 mb-3 text-sm">
+                           Intent: {voiceResult.intentCategory}
+                        </p>
+                     ) : null}
                      <button onClick={navToDashboard} className="px-4 py-2 bg-white text-black font-bold rounded-full text-sm inline-flex items-center gap-2">
                         {t.hero.goDashboard} <ArrowRight className="w-4 h-4" />
                      </button>

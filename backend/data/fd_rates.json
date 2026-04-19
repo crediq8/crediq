@@ -1,0 +1,24 @@
+{
+  "updated_on": "2026-04-16",
+  "currency": "INR",
+  "banks": [
+    {
+      "bank": "SBI",
+      "tenure_months": 12,
+      "general_rate": 6.8,
+      "senior_rate": 7.3
+    },
+    {
+      "bank": "HDFC",
+      "tenure_months": 12,
+      "general_rate": 7.1,
+      "senior_rate": 7.6
+    },
+    {
+      "bank": "ICICI",
+      "tenure_months": 12,
+      "general_rate": 7.0,
+      "senior_rate": 7.5
+    }
+  ]
+}

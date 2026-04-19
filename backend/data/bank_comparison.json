@@ -1,0 +1,26 @@
+{
+  "updated_on": "2026-04-16",
+  "products": [
+    {
+      "name": "Tier 1 Bank FD",
+      "risk": "low",
+      "liquidity": "medium",
+      "expected_return_range": "6.5% - 7.6%",
+      "best_for": "capital safety"
+    },
+    {
+      "name": "Debt Mutual Fund",
+      "risk": "medium",
+      "liquidity": "high",
+      "expected_return_range": "6% - 8.5%",
+      "best_for": "short-term flexibility"
+    },
+    {
+      "name": "Balanced Hybrid Fund",
+      "risk": "medium",
+      "liquidity": "high",
+      "expected_return_range": "8% - 11%",
+      "best_for": "long-term growth with control"
+    }
+  ]
+}
