@@ -283,7 +283,7 @@ export default function Home() {
 
    const t = TRANSLATIONS[uiLang];
    const greetingText =
-      "Namaste, main aapki madad ke liye yahan hoon. Aap mic button dabakar apna sawaal pooch sakte hain.";
+      "Namaste, main aapki madad ke liye yahan hoon. Aap Mike button dabakar apna sawaal pooch sakte hain.";
 
    const maturity = useMemo(() => {
       return Math.round(calculator.principal * Math.pow(1 + calculator.rate / 100, calculator.years));
@@ -384,6 +384,7 @@ export default function Home() {
       if (!text.trim()) {
          setVoiceStatus("error");
          setVoiceError(t.hero.fallback);
+         await playTts(t.hero.fallbackHi, "hi");
          return;
       }
 
@@ -439,6 +440,7 @@ export default function Home() {
       } catch {
          setVoiceStatus("error");
          setVoiceError(t.hero.fallback);
+         await playTts(t.hero.fallbackHi, "hi");
       } finally {
          setIsVoiceBusy(false);
       }
@@ -478,6 +480,7 @@ export default function Home() {
             } catch {
                setVoiceStatus("error");
                setVoiceError(t.hero.fallback);
+               await playTts(t.hero.fallbackHi, "hi");
             }
          };
 
