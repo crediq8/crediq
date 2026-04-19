@@ -16,8 +16,7 @@ load_dotenv()
 
 
 def parse_origins() -> list[str]:
-    origins = os.getenv("FRONTEND_ORIGINS", "http://localhost:3000")
-    return [origin.strip() for origin in origins.split(",") if origin.strip()]
+    return ["*"]
 
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")

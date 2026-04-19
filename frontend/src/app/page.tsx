@@ -580,10 +580,7 @@ export default function Home() {
          if (typeof window !== "undefined") {
             window.localStorage.setItem(GREETING_STORAGE_KEY, "1");
          }
-         const played = await playSoftGreeting();
-         if (!played) {
-            setNeedsGreetingInteraction(true);
-         }
+         await playSoftGreeting();
       };
 
       void runGreeting();
